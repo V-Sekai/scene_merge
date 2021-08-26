@@ -54,6 +54,7 @@ Copyright NVIDIA Corporation 2006 -- Ignacio Castano <icastano@nvidia.com>
 #include "core/math/vector2.h"
 #include "core/math/vector3.h"
 #include "core/os/os.h"
+#include "editor/import/scene_importer_mesh_node_3d.h"
 #include "scene/animation/animation_player.h"
 #include "scene/resources/mesh_data_tool.h"
 #include "scene/resources/packed_scene.h"
@@ -107,16 +108,43 @@ bool MeshMergeMaterialRepack::setAtlasTexel(void *param, int x, int y, const Vec
 }
 
 void MeshMergeMaterialRepack::_find_all_mesh_instances(Vector<MeshMerge> &r_items, Node *p_current_node, const Node *p_owner) {
-	MeshInstance3D *mi = Object::cast_to<MeshInstance3D>(p_current_node);
-	if (mi) {
-		Ref<ArrayMesh> array_mesh = mi->get_mesh();
-		if (array_mesh.is_valid()) {
-			bool has_blends = false;
-			bool has_bones = false;
-			bool has_transparency = false;
+	Ref<ArrayMesh> array_mesh;
+	if (Object::cast_to<MeshInstance3D>(p_current_node)) {
+		array_mesh = Object::cast_to<MeshInstance3D>(p_current_node)->get_mesh();
+	} else if (Object::cast_to<EditorSceneImporterMeshNode3D>(p_current_node)) {
+		Ref<EditorSceneImporterMesh> mesh = Object::cast_to<EditorSceneImporterMeshNode3D>(p_current_node)->get_mesh();
+		if (mesh.is_valid()) {
+			array_mesh = mesh->get_mesh();
+		}
+	}
+	if (array_mesh.is_valid()) {
+		bool has_blends = false;
+		bool has_bones = false;
+		bool has_transparency = false;
+		for (int32_t surface_i = 0; surface_i < array_mesh->get_surface_count(); surface_i++) {
+			Array array = array_mesh->surface_get_arrays(surface_i);
+			Array bones = array[ArrayMesh::ARRAY_BONES];
+			has_bones |= bones.size() != 0;
+			has_blends |= array_mesh->get_blend_shape_count() != 0;
+			Ref<StandardMaterial3D> spatial_mat = array_mesh->surface_get_material(surface_i);
+			if (spatial_mat.is_valid()) {
+				Ref<Image> albedo_img = spatial_mat->get_texture(StandardMaterial3D::TEXTURE_ALBEDO);
+				has_transparency |= (spatial_mat->get_transparency() != BaseMaterial3D::TRANSPARENCY_DISABLED);
+			}
+			if (has_blends || has_bones || has_transparency) {
+				break;
+			}
+		}
+		if (!has_blends && !has_bones && !has_transparency) {
 			for (int32_t surface_i = 0; surface_i < array_mesh->get_surface_count(); surface_i++) {
 				Array array = array_mesh->surface_get_arrays(surface_i);
+				if (r_items[r_items.size() - 1].vertex_count > 65536) {
+					MeshMerge new_mesh;
+					r_items.push_back(new_mesh);
+				}
+				Array vertexes = array[ArrayMesh::ARRAY_VERTEX];
 				Array bones = array[ArrayMesh::ARRAY_BONES];
+				Array uvs = array[ArrayMesh::ARRAY_TEX_UV];
 				has_bones |= bones.size() != 0;
 				has_blends |= array_mesh->get_blend_shape_count() != 0;
 				Ref<StandardMaterial3D> spatial_mat = array_mesh->surface_get_material(surface_i);
@@ -124,43 +152,20 @@ void MeshMergeMaterialRepack::_find_all_mesh_instances(Vector<MeshMerge> &r_item
 					Ref<Image> albedo_img = spatial_mat->get_texture(StandardMaterial3D::TEXTURE_ALBEDO);
 					has_transparency |= (spatial_mat->get_transparency() != BaseMaterial3D::TRANSPARENCY_DISABLED);
 				}
-				if (has_blends || has_bones || has_transparency) {
-					break;
-				}
-			}
-			if (!has_blends && !has_bones && !has_transparency) {
-				for (int32_t surface_i = 0; surface_i < array_mesh->get_surface_count(); surface_i++) {
-					Array array = array_mesh->surface_get_arrays(surface_i);
-					if (r_items[r_items.size() - 1].vertex_count > 65536) {
-						MeshMerge new_mesh;
-						r_items.push_back(new_mesh);
+				if (!has_blends && !has_bones && !has_transparency) {
+					MeshState mesh_state;
+					Ref<SurfaceTool> st;
+					st.instantiate();
+					st->create_from_triangle_arrays(array);
+					Ref<ArrayMesh> split_mesh = st->commit();
+					split_mesh->surface_set_material(0, array_mesh->surface_get_material(surface_i));
+					mesh_state.mesh = split_mesh;
+					if (p_current_node->is_inside_tree()) {
+						mesh_state.path = p_current_node->get_path();
 					}
-					Array vertexes = array[ArrayMesh::ARRAY_VERTEX];
-					Array bones = array[ArrayMesh::ARRAY_BONES];
-					Array uvs = array[ArrayMesh::ARRAY_TEX_UV];
-					has_bones |= bones.size() != 0;
-					has_blends |= array_mesh->get_blend_shape_count() != 0;
-					Ref<StandardMaterial3D> spatial_mat = array_mesh->surface_get_material(surface_i);
-					if (spatial_mat.is_valid()) {
-						Ref<Image> albedo_img = spatial_mat->get_texture(StandardMaterial3D::TEXTURE_ALBEDO);
-						has_transparency |= (spatial_mat->get_transparency() != BaseMaterial3D::TRANSPARENCY_DISABLED);
-					}
-					if (!has_blends && !has_bones && !has_transparency) {
-						MeshState mesh_state;
-						Ref<SurfaceTool> st;
-						st.instantiate();
-						st->create_from_triangle_arrays(array);
-						Ref<ArrayMesh> split_mesh = st->commit();
-						split_mesh->surface_set_material(0, array_mesh->surface_get_material(surface_i));
-						mesh_state.mesh = split_mesh;
-						if (mi->is_inside_tree()) {
-							mesh_state.path = mi->get_path();
-						}
-						mesh_state.mesh_instance = mi;
-						MeshMerge &mesh = r_items.write[r_items.size() - 1];
-						mesh.vertex_count += vertexes.size();
-						mesh.meshes.push_back(mesh_state);
-					}
+					MeshMerge &mesh = r_items.write[r_items.size() - 1];
+					mesh.vertex_count += vertexes.size();
+					mesh.meshes.push_back(mesh_state);
 				}
 			}
 		}
@@ -280,14 +285,7 @@ Node *MeshMergeMaterialRepack::_merge_list(MeshMergeState p_mesh_merge_state, in
 		material_cache,
 		texture_atlas
 	};
-#ifdef TOOLS_ENABLED
-	EditorProgress progress_scene_merge("gen_get_source_material", TTR("Get source material"), state.material_cache.size());
-	int step = 0;
-#endif
 	for (int32_t material_cache_i = 0; material_cache_i < state.material_cache.size(); material_cache_i++) {
-#ifdef TOOLS_ENABLED
-		step++;
-#endif
 		Ref<StandardMaterial3D> material = state.material_cache[material_cache_i];
 		if (material.is_null()) {
 			continue;
@@ -390,9 +388,6 @@ Node *MeshMergeMaterialRepack::_merge_list(MeshMergeState p_mesh_merge_state, in
 		cache.orm_img = _get_source_texture(state, material, "orm");
 		cache.emission_img = _get_source_texture(state, material, "emission");
 		state.material_image_cache[material_cache_i] = cache;
-#ifdef TOOLS_ENABLED
-		progress_scene_merge.step(TTR("Getting Source Material: ") + material->get_name() + " (" + itos(step) + "/" + itos(state.material_cache.size()) + ")", step);
-#endif
 	}
 	_generate_texture_atlas(state, "albedo");
 	_generate_texture_atlas(state, "emission");
@@ -1049,7 +1044,7 @@ Node *MeshMergeMaterialRepack::_output(MergeState &state, int p_count) {
 		tex->create_from_image(img);
 		ResourceSaver::save(path, tex);
 		RES res = ResourceLoader::load(path, "Texture");
-		mat->set_feature(StandardMaterial3D::FEATURE_NORMAL_MAPPING);
+		mat->set_feature(StandardMaterial3D::FEATURE_NORMAL_MAPPING, true);
 		mat->set_texture(StandardMaterial3D::TEXTURE_NORMAL, res);
 	}
 	Map<String, Ref<Image> >::Element *ORM = state.texture_atlas.find("orm");
