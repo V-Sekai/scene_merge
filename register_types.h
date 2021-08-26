@@ -28,5 +28,5 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
 
-void register_scene_merge_types();
-void unregister_scene_merge_types();
+void register_merge_types();
+void unregister_merge_types();

@@ -29,15 +29,13 @@
 /*************************************************************************/
 
 #include "register_types.h"
-#include "core/engine.h"
+#include "editor/editor_node.h"
 #include "merge.h"
 
-void register_scene_merge_types() {
-#ifdef TOOLS_ENABLED
+void register_merge_types() {
 	ClassDB::register_class<SceneMerge>();
 	EditorPlugins::add_by_type<SceneMergePlugin>();
-#endif
 }
 
-void unregister_scene_merge_types() {
+void unregister_merge_types() {
 }

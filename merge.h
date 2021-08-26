@@ -56,22 +56,20 @@ Copyright NVIDIA Corporation 2006 -- Ignacio Castano <icastano@nvidia.com>
 #include <cmath>
 #include <vector>
 
-#include "core/bind/core_bind.h"
-#include "core/reference.h"
+#include "core/core_bind.h"
+#include "core/templates/safe_refcount.h"
 
-#ifdef TOOLS_ENABLED
 #include "editor/editor_node.h"
 #include "editor/editor_plugin.h"
-#endif
 
 #include "modules/csg/csg_shape.h"
 #include "modules/gridmap/grid_map.h"
-#include "scene/3d/mesh_instance.h"
+#include "scene/3d/mesh_instance_3d.h"
 #include "scene/main/node.h"
 
-class SceneMerge : public Reference {
+class SceneMerge : public RefCounted {
 private:
-	GDCLASS(SceneMerge, Reference);
+	GDCLASS(SceneMerge, RefCounted);
 
 	void _dialog_action(String p_file);
 
@@ -79,7 +77,6 @@ public:
 	void merge(const String p_file, Node *p_root_node);
 };
 
-#ifdef TOOLS_ENABLED
 class SceneMergePlugin : public EditorPlugin {
 
 	GDCLASS(SceneMergePlugin, EditorPlugin);
@@ -89,7 +86,7 @@ class SceneMergePlugin : public EditorPlugin {
 	EditorFileDialog *file_export_lib = memnew(EditorFileDialog);
 	Ref<SceneMerge> scene_optimize;
 	void _dialog_action(String p_file);
-	void merge(Variant p_user_data);
+	void merge();
 
 protected:
 	static void _bind_methods();
@@ -98,7 +95,6 @@ public:
 	SceneMergePlugin(EditorNode *p_node);
 	void _notification(int notification);
 };
-#endif
 
 #endif
 
@@ -120,10 +116,10 @@ public:
 #endif
 
 #include "core/math/vector2.h"
-#include "core/reference.h"
-#include "scene/3d/mesh_instance.h"
+#include "core/templates/safe_refcount.h"
+#include "scene/3d/mesh_instance_3d.h"
 
-class MeshMergeMaterialRepack : public Reference {
+class MeshMergeMaterialRepack : public RefCounted {
 private:
 	struct TextureData {
 		uint16_t width;
@@ -201,7 +197,7 @@ private:
 	struct MeshState {
 		Ref<Mesh> mesh;
 		NodePath path;
-		MeshInstance *mesh_instance;
+		MeshInstance3D *mesh_instance;
 		bool operator==(const MeshState &rhs) const;
 	};
 	struct MaterialImageCache {
@@ -235,7 +231,7 @@ private:
 	void _find_all_animated_meshes(Vector<MeshMerge> &r_items, Node *p_current_node, const Node *p_owner);
 	void _find_all_mesh_instances(Vector<MeshMerge> &r_items, Node *p_current_node, const Node *p_owner);
 	void _generate_texture_atlas(MergeState &state, String texture_type);
-	Ref<Image> _get_source_texture(MergeState &state, Ref<SpatialMaterial> material, String texture_type);
+	Ref<Image> _get_source_texture(MergeState &state, Ref<StandardMaterial3D> material, String texture_type);
 	void _generate_atlas(const int32_t p_num_meshes, Vector<Vector<Vector2> > &r_uvs, xatlas::Atlas *atlas, const Vector<MeshState> &r_meshes, const Vector<Ref<Material> > material_cache,
 			xatlas::PackOptions &pack_options);
 	void scale_uvs_by_texture_dimension(const Vector<MeshState> &original_mesh_items, Vector<MeshState> &mesh_items, Vector<Vector<Vector2> > &uv_groups, Array &r_vertex_to_material, Vector<Vector<ModelVertex> > &r_model_vertices);

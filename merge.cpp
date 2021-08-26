@@ -49,8 +49,8 @@ Copyright NVIDIA Corporation 2006 -- Ignacio Castano <icastano@nvidia.com>
 
 #include "thirdparty/misc/rjm_texbleed.h"
 
-#include "core/bind/core_bind.h"
-#include "core/image.h"
+#include "core/core_bind.h"
+#include "core/io/image.h"
 #include "core/math/vector2.h"
 #include "core/math/vector3.h"
 #include "core/os/os.h"
@@ -64,9 +64,9 @@ Copyright NVIDIA Corporation 2006 -- Ignacio Castano <icastano@nvidia.com>
 void SceneMerge::merge(const String p_file, Node *p_root_node) {
 	PackedScene *scene = memnew(PackedScene);
 	scene->pack(p_root_node);
-	Node *root = scene->instance();
+	Node *root = scene->instantiate();
 	Ref<MeshMergeMaterialRepack> repack;
-	repack.instance();
+	repack.instantiate();
 	root = repack->merge(root, p_root_node, p_file);
 	ERR_FAIL_COND(!root);
 	scene->pack(root);
@@ -107,7 +107,7 @@ bool MeshMergeMaterialRepack::setAtlasTexel(void *param, int x, int y, const Vec
 }
 
 void MeshMergeMaterialRepack::_find_all_mesh_instances(Vector<MeshMerge> &r_items, Node *p_current_node, const Node *p_owner) {
-	MeshInstance *mi = Object::cast_to<MeshInstance>(p_current_node);
+	MeshInstance3D *mi = Object::cast_to<MeshInstance3D>(p_current_node);
 	if (mi) {
 		Ref<ArrayMesh> array_mesh = mi->get_mesh();
 		if (array_mesh.is_valid()) {
@@ -119,10 +119,10 @@ void MeshMergeMaterialRepack::_find_all_mesh_instances(Vector<MeshMerge> &r_item
 				Array bones = array[ArrayMesh::ARRAY_BONES];
 				has_bones |= bones.size() != 0;
 				has_blends |= array_mesh->get_blend_shape_count() != 0;
-				Ref<SpatialMaterial> spatial_mat = array_mesh->surface_get_material(surface_i);
+				Ref<StandardMaterial3D> spatial_mat = array_mesh->surface_get_material(surface_i);
 				if (spatial_mat.is_valid()) {
-					Ref<Image> albedo_img = spatial_mat->get_texture(SpatialMaterial::TEXTURE_ALBEDO);
-					has_transparency |= spatial_mat->get_feature(SpatialMaterial::FEATURE_TRANSPARENT) || spatial_mat->get_flag(SpatialMaterial::FLAG_USE_ALPHA_SCISSOR);
+					Ref<Image> albedo_img = spatial_mat->get_texture(StandardMaterial3D::TEXTURE_ALBEDO);
+					has_transparency |= (spatial_mat->get_transparency() != BaseMaterial3D::TRANSPARENCY_DISABLED);
 				}
 				if (has_blends || has_bones || has_transparency) {
 					break;
@@ -140,15 +140,15 @@ void MeshMergeMaterialRepack::_find_all_mesh_instances(Vector<MeshMerge> &r_item
 					Array uvs = array[ArrayMesh::ARRAY_TEX_UV];
 					has_bones |= bones.size() != 0;
 					has_blends |= array_mesh->get_blend_shape_count() != 0;
-					Ref<SpatialMaterial> spatial_mat = array_mesh->surface_get_material(surface_i);
+					Ref<StandardMaterial3D> spatial_mat = array_mesh->surface_get_material(surface_i);
 					if (spatial_mat.is_valid()) {
-						Ref<Image> albedo_img = spatial_mat->get_texture(SpatialMaterial::TEXTURE_ALBEDO);
-						has_transparency |= spatial_mat->get_feature(SpatialMaterial::FEATURE_TRANSPARENT) || spatial_mat->get_flag(SpatialMaterial::FLAG_USE_ALPHA_SCISSOR);
+						Ref<Image> albedo_img = spatial_mat->get_texture(StandardMaterial3D::TEXTURE_ALBEDO);
+						has_transparency |= (spatial_mat->get_transparency() != BaseMaterial3D::TRANSPARENCY_DISABLED);
 					}
 					if (!has_blends && !has_bones && !has_transparency) {
 						MeshState mesh_state;
 						Ref<SurfaceTool> st;
-						st.instance();
+						st.instantiate();
 						st->create_from_triangle_arrays(array);
 						Ref<ArrayMesh> split_mesh = st->commit();
 						split_mesh->surface_set_material(0, array_mesh->surface_get_material(surface_i));
@@ -179,7 +179,7 @@ void MeshMergeMaterialRepack::_find_all_animated_meshes(Vector<MeshMerge> &r_ite
 		for (int32_t mesh_merge_i = 0; mesh_merge_i < r_items.size(); mesh_merge_i++) {
 			MeshMerge &mesh_merg = r_items.write[mesh_merge_i];
 			for (int32_t i = 0; i < mesh_merg.meshes.size(); i++) {
-				MeshInstance *mi = mesh_merg.meshes.write[i].mesh_instance;
+				MeshInstance3D *mi = mesh_merg.meshes.write[i].mesh_instance;
 				String path = ap->get_parent()->get_path_to(mi);
 				paths.insert(path, mesh_merg.meshes.write[i]);
 			}
@@ -251,7 +251,7 @@ Node *MeshMergeMaterialRepack::_merge_list(MeshMergeState p_mesh_merge_state, in
 	for (int32_t mesh_i = 0; mesh_i < mesh_items.size(); mesh_i++) {
 		for (int32_t j = 0; j < mesh_items[mesh_i].mesh->get_surface_count(); j++) {
 			Array mesh = mesh_items[mesh_i].mesh->surface_get_arrays(j);
-			if (mesh.empty()) {
+			if (mesh.is_empty()) {
 				continue;
 			}
 			Vector<Vector3> vertices = mesh[ArrayMesh::ARRAY_VERTEX];
@@ -288,24 +288,24 @@ Node *MeshMergeMaterialRepack::_merge_list(MeshMergeState p_mesh_merge_state, in
 #ifdef TOOLS_ENABLED
 		step++;
 #endif
-		Ref<SpatialMaterial> material = state.material_cache[material_cache_i];
+		Ref<StandardMaterial3D> material = state.material_cache[material_cache_i];
 		if (material.is_null()) {
 			continue;
 		}
-		if (material->get_texture(SpatialMaterial::TEXTURE_ALBEDO).is_null()) {
+		if (material->get_texture(StandardMaterial3D::TEXTURE_ALBEDO).is_null()) {
 			Ref<Image> img;
-			img.instance();
+			img.instantiate();
 			img->create(default_texture_length, default_texture_length, false, Image::FORMAT_RGBA8);
 			img->fill(material->get_albedo());
 			material->set_albedo(Color(1.0f, 1.0f, 1.0f));
 			Ref<ImageTexture> tex;
-			tex.instance();
+			tex.instantiate();
 			tex->create_from_image(img);
-			material->set_texture(SpatialMaterial::TEXTURE_ALBEDO, tex);
+			material->set_texture(StandardMaterial3D::TEXTURE_ALBEDO, tex);
 		}
-		if (material->get_texture(SpatialMaterial::TEXTURE_EMISSION).is_null()) {
+		if (material->get_texture(StandardMaterial3D::TEXTURE_EMISSION).is_null()) {
 			Ref<Image> img;
-			img.instance();
+			img.instantiate();
 			img->create(default_texture_length, default_texture_length, false, Image::FORMAT_RGBA8);
 			img->fill(material->get_emission());
 
@@ -313,76 +313,76 @@ Node *MeshMergeMaterialRepack::_merge_list(MeshMergeState p_mesh_merge_state, in
 			float emission_energy = material->get_emission_energy();
 			Color color_mul;
 			Color color_add;
-			if (material->get_emission_operator() == SpatialMaterial::EMISSION_OP_ADD) {
+			if (material->get_emission_operator() == StandardMaterial3D::EMISSION_OP_ADD) {
 				color_mul = Color(1, 1, 1) * emission_energy;
 				color_add = emission_col * emission_energy;
 			} else {
 				color_mul = emission_col * emission_energy;
 				color_add = Color(0, 0, 0);
 			}
-			material->set_feature(SpatialMaterial::FEATURE_EMISSION, true);
+			material->set_feature(StandardMaterial3D::FEATURE_EMISSION, true);
 			Color c;
 			c.r = c.r * color_mul.r + color_add.r;
 			c.g = c.g * color_mul.g + color_add.g;
 			c.b = c.b * color_mul.b + color_add.b;
 			material->set_emission(c);
 			Ref<ImageTexture> tex;
-			tex.instance();
+			tex.instantiate();
 			tex->create_from_image(img);
-			material->set_texture(SpatialMaterial::TEXTURE_EMISSION, tex);
+			material->set_texture(StandardMaterial3D::TEXTURE_EMISSION, tex);
 		}
-		if (material->get_texture(SpatialMaterial::TEXTURE_ROUGHNESS).is_null()) {
+		if (material->get_texture(StandardMaterial3D::TEXTURE_ROUGHNESS).is_null()) {
 			Ref<Image> img;
-			img.instance();
+			img.instantiate();
 			img->create(default_texture_length, default_texture_length, false, Image::FORMAT_RGBA8);
 			float roughness = material->get_roughness();
 			Color c = Color(roughness, roughness, roughness);
 			material->set_roughness(1.0f);
 			img->fill(c);
 			Ref<ImageTexture> tex;
-			tex.instance();
+			tex.instantiate();
 			tex->create_from_image(img);
-			material->set_roughness_texture_channel(SpatialMaterial::TEXTURE_CHANNEL_GREEN);
-			material->set_texture(SpatialMaterial::TEXTURE_ROUGHNESS, tex);
+			material->set_roughness_texture_channel(StandardMaterial3D::TEXTURE_CHANNEL_GREEN);
+			material->set_texture(StandardMaterial3D::TEXTURE_ROUGHNESS, tex);
 		}
-		if (material->get_texture(SpatialMaterial::TEXTURE_METALLIC).is_null()) {
+		if (material->get_texture(StandardMaterial3D::TEXTURE_METALLIC).is_null()) {
 			Ref<Image> img;
-			img.instance();
+			img.instantiate();
 			img->create(default_texture_length, default_texture_length, false, Image::FORMAT_RGBA8);
 			float metallic = material->get_metallic();
 			Color c = Color(metallic, metallic, metallic);
 			material->set_metallic(1.0f);
 			img->fill(c);
 			Ref<ImageTexture> tex;
-			tex.instance();
+			tex.instantiate();
 			tex->create_from_image(img);
-			material->set_metallic_texture_channel(SpatialMaterial::TEXTURE_CHANNEL_GREEN);
-			material->set_texture(SpatialMaterial::TEXTURE_METALLIC, tex);
+			material->set_metallic_texture_channel(StandardMaterial3D::TEXTURE_CHANNEL_GREEN);
+			material->set_texture(StandardMaterial3D::TEXTURE_METALLIC, tex);
 		}
-		if (material->get_texture(SpatialMaterial::TEXTURE_AMBIENT_OCCLUSION).is_null()) {
+		if (material->get_texture(StandardMaterial3D::TEXTURE_AMBIENT_OCCLUSION).is_null()) {
 			Ref<Image> img;
-			img.instance();
+			img.instantiate();
 			img->create(default_texture_length, default_texture_length, false, Image::FORMAT_RGBA8);
 			float ao = 1.0f;
 			Color c = Color(ao, ao, ao);
 			img->fill(c);
 			Ref<ImageTexture> tex;
-			tex.instance();
+			tex.instantiate();
 			tex->create_from_image(img);
-			material->set_ao_texture_channel(SpatialMaterial::TEXTURE_CHANNEL_GREEN);
-			material->set_texture(SpatialMaterial::TEXTURE_AMBIENT_OCCLUSION, tex);
+			material->set_ao_texture_channel(StandardMaterial3D::TEXTURE_CHANNEL_GREEN);
+			material->set_texture(StandardMaterial3D::TEXTURE_AMBIENT_OCCLUSION, tex);
 		}
-		if (!material->get_feature(SpatialMaterial::FEATURE_NORMAL_MAPPING)) {
+		if (!material->get_feature(StandardMaterial3D::FEATURE_NORMAL_MAPPING)) {
 			Ref<Image> img;
-			img.instance();
+			img.instantiate();
 			img->create(default_texture_length, default_texture_length, false, Image::FORMAT_RGBA8);
 			Color c = Color(0.5f, 0.5f, 1.0f);
 			img->fill(c);
 			Ref<ImageTexture> tex;
-			tex.instance();
+			tex.instantiate();
 			tex->create_from_image(img);
-			material->set_feature(SpatialMaterial::FEATURE_NORMAL_MAPPING, true);
-			material->set_texture(SpatialMaterial::TEXTURE_NORMAL, tex);
+			material->set_feature(StandardMaterial3D::FEATURE_NORMAL_MAPPING, true);
+			material->set_texture(StandardMaterial3D::TEXTURE_NORMAL, tex);
 		}
 		MaterialImageCache cache;
 		cache.albedo_img = _get_source_texture(state, material, "albedo");
@@ -422,7 +422,7 @@ void MeshMergeMaterialRepack::_remove_empty_spatials(Node *scene) {
 	Vector<Node *> nodes;
 	_clean_animation_player(scene);
 	_mark_nodes(scene, scene, nodes);
-	nodes.invert();
+	nodes.reverse();
 	_remove_nodes(scene, nodes);
 }
 
@@ -450,7 +450,7 @@ void MeshMergeMaterialRepack::_remove_nodes(Node *scene, Vector<Node *> &r_nodes
 	for (int32_t node_i = 0; node_i < r_nodes.size(); node_i++) {
 		Node *node = r_nodes[node_i];
 		bool is_root = node == scene;
-		bool is_base_spatial = node->get_class_name() == Spatial().get_class_name();
+		bool is_base_spatial = node->get_class_name() == Node3D().get_class_name();
 		int32_t pending_deletion_count = 0;
 		for (int32_t child_i = 0; child_i < node->get_child_count(); child_i++) {
 			if (node->get_child(child_i)->is_queued_for_deletion()) {
@@ -469,7 +469,7 @@ void MeshMergeMaterialRepack::_remove_nodes(Node *scene, Vector<Node *> &r_nodes
 
 void MeshMergeMaterialRepack::_generate_texture_atlas(MergeState &state, String texture_type) {
 	Ref<Image> atlas_img;
-	atlas_img.instance();
+	atlas_img.instantiate();
 	atlas_img->create(state.atlas->width, state.atlas->height, false, Image::FORMAT_RGBA8);
 	// Rasterize chart triangles.
 #ifdef TOOLS_ENABLED
@@ -508,12 +508,7 @@ void MeshMergeMaterialRepack::_generate_texture_atlas(MergeState &state, String 
 					args.source_uvs[l].y = state.uvs[mesh_i][vertex.xref].y / MAX(texture_minimum_side, img->get_height());
 				}
 				Triangle tri(v[0], v[1], v[2], Vector3(1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, 1));
-
-				args.sourceTexture->lock();
-				args.atlasData->lock();
 				tri.drawAA(setAtlasTexel, &args);
-				args.sourceTexture->unlock();
-				args.atlasData->unlock();
 			}
 		}
 #ifdef TOOLS_ENABLED
@@ -524,71 +519,71 @@ void MeshMergeMaterialRepack::_generate_texture_atlas(MergeState &state, String 
 	state.texture_atlas.insert(texture_type, atlas_img);
 }
 
-Ref<Image> MeshMergeMaterialRepack::_get_source_texture(MergeState &state, const Ref<SpatialMaterial> material, String texture_type) {
+Ref<Image> MeshMergeMaterialRepack::_get_source_texture(MergeState &state, const Ref<StandardMaterial3D> material, String texture_type) {
 	int32_t width = texture_minimum_side;
 	int32_t height = texture_minimum_side;
 	if (material.is_null()) {
 		Ref<Image> img;
-		img.instance();
+		img.instantiate();
 		img->create(width, height, false, Image::FORMAT_RGBA8);
 		return img;
 	}
-	Ref<Texture> ao_texture = material->get_texture(SpatialMaterial::TEXTURE_AMBIENT_OCCLUSION);
+	Ref<Texture2D> ao_texture = material->get_texture(StandardMaterial3D::TEXTURE_AMBIENT_OCCLUSION);
 	Ref<Image> ao_img;
 	if (ao_texture.is_valid()) {
-		ao_img = ao_texture->get_data();
+		ao_img = ao_texture->get_image();
 	}
-	Ref<Texture> metallic_texture = material->get_texture(SpatialMaterial::TEXTURE_METALLIC);
+	Ref<Texture2D> metallic_texture = material->get_texture(StandardMaterial3D::TEXTURE_METALLIC);
 	Ref<Image> metallic_img;
 	if (metallic_texture.is_valid()) {
-		metallic_img = metallic_texture->get_data();
+		metallic_img = metallic_texture->get_image();
 	}
-	Ref<Texture> roughness_texture = material->get_texture(SpatialMaterial::TEXTURE_ROUGHNESS);
+	Ref<Texture2D> roughness_texture = material->get_texture(StandardMaterial3D::TEXTURE_ROUGHNESS);
 	Ref<Image> roughness_img;
 	if (roughness_texture.is_valid()) {
-		roughness_img = roughness_texture->get_data();
+		roughness_img = roughness_texture->get_image();
 	}
-	Ref<Texture> albedo_texture = material->get_texture(SpatialMaterial::TEXTURE_ALBEDO);
+	Ref<Texture2D> albedo_texture = material->get_texture(StandardMaterial3D::TEXTURE_ALBEDO);
 	Ref<Image> albedo_img;
 	if (albedo_texture.is_valid()) {
-		albedo_img = albedo_texture->get_data();
+		albedo_img = albedo_texture->get_image();
 	}
-	Ref<Texture> normal_texture = material->get_texture(SpatialMaterial::TEXTURE_NORMAL);
+	Ref<Texture2D> normal_texture = material->get_texture(StandardMaterial3D::TEXTURE_NORMAL);
 	Ref<Image> normal_img;
 	if (normal_texture.is_valid()) {
-		normal_img = normal_texture->get_data();
+		normal_img = normal_texture->get_image();
 	}
-	Ref<Texture> emission_texture = material->get_texture(SpatialMaterial::TEXTURE_EMISSION);
+	Ref<Texture2D> emission_texture = material->get_texture(StandardMaterial3D::TEXTURE_EMISSION);
 	Ref<Image> emission_img;
-	if (albedo_img.is_valid() && !albedo_img->empty()) {
+	if (albedo_img.is_valid() && !albedo_img->is_empty()) {
 		width = MAX(width, albedo_img->get_width());
 		height = MAX(height, albedo_img->get_height());
 	}
 	if (emission_texture.is_valid()) {
-		emission_img = emission_texture->get_data();
+		emission_img = emission_texture->get_image();
 	}
-	if (ao_img.is_valid() && !ao_img->empty()) {
+	if (ao_img.is_valid() && !ao_img->is_empty()) {
 		width = MAX(width, ao_img->get_width());
 		height = MAX(height, ao_img->get_height());
 	}
-	if (metallic_img.is_valid() && !metallic_img->empty()) {
+	if (metallic_img.is_valid() && !metallic_img->is_empty()) {
 		width = MAX(width, metallic_img->get_width());
 		height = MAX(height, metallic_img->get_height());
 	}
-	if (roughness_img.is_valid() && !roughness_img->empty()) {
+	if (roughness_img.is_valid() && !roughness_img->is_empty()) {
 		width = MAX(width, roughness_img->get_width());
 		height = MAX(height, roughness_img->get_height());
 	}
-	if (emission_img.is_valid() && !emission_img->empty()) {
+	if (emission_img.is_valid() && !emission_img->is_empty()) {
 		width = MAX(width, emission_img->get_width());
 		height = MAX(height, emission_img->get_height());
 	}
-	if (normal_img.is_valid() && !normal_img->empty()) {
+	if (normal_img.is_valid() && !normal_img->is_empty()) {
 		width = MAX(width, normal_img->get_width());
 		height = MAX(height, normal_img->get_height());
 	}
 	if (albedo_img.is_valid()) {
-		if (!albedo_img->empty()) {
+		if (!albedo_img->is_empty()) {
 			if (albedo_img->is_compressed()) {
 				albedo_img->decompress();
 			}
@@ -596,7 +591,7 @@ Ref<Image> MeshMergeMaterialRepack::_get_source_texture(MergeState &state, const
 		albedo_img->resize(width, height, Image::INTERPOLATE_LANCZOS);
 	}
 	if (ao_img.is_valid()) {
-		if (!ao_img->empty()) {
+		if (!ao_img->is_empty()) {
 			if (ao_img->is_compressed()) {
 				ao_img->decompress();
 			}
@@ -604,7 +599,7 @@ Ref<Image> MeshMergeMaterialRepack::_get_source_texture(MergeState &state, const
 		ao_img->resize(width, height, Image::INTERPOLATE_LANCZOS);
 	}
 	if (roughness_img.is_valid()) {
-		if (!roughness_img->empty()) {
+		if (!roughness_img->is_empty()) {
 			if (roughness_img->is_compressed()) {
 				roughness_img->decompress();
 			}
@@ -612,7 +607,7 @@ Ref<Image> MeshMergeMaterialRepack::_get_source_texture(MergeState &state, const
 		roughness_img->resize(width, height, Image::INTERPOLATE_LANCZOS);
 	}
 	if (metallic_img.is_valid()) {
-		if (!metallic_img->empty()) {
+		if (!metallic_img->is_empty()) {
 			if (metallic_img->is_compressed()) {
 				metallic_img->decompress();
 			}
@@ -620,7 +615,7 @@ Ref<Image> MeshMergeMaterialRepack::_get_source_texture(MergeState &state, const
 		metallic_img->resize(width, height, Image::INTERPOLATE_LANCZOS);
 	}
 	if (normal_img.is_valid()) {
-		if (!normal_img->empty()) {
+		if (!normal_img->is_empty()) {
 			if (normal_img->is_compressed()) {
 				normal_img->decompress();
 			}
@@ -628,7 +623,7 @@ Ref<Image> MeshMergeMaterialRepack::_get_source_texture(MergeState &state, const
 		normal_img->resize(width, height, Image::INTERPOLATE_LANCZOS);
 	}
 	if (emission_img.is_valid()) {
-		if (!emission_img->empty()) {
+		if (!emission_img->is_empty()) {
 			if (emission_img->is_compressed()) {
 				emission_img->decompress();
 			}
@@ -636,7 +631,7 @@ Ref<Image> MeshMergeMaterialRepack::_get_source_texture(MergeState &state, const
 		emission_img->resize(width, height, Image::INTERPOLATE_LANCZOS);
 	}
 	Ref<Image> img;
-	img.instance();
+	img.instantiate();
 	img->create(width, height, false, Image::FORMAT_RGBA8);
 	Ref<Texture> tex;
 	if (texture_type == "orm") {
@@ -644,36 +639,32 @@ Ref<Image> MeshMergeMaterialRepack::_get_source_texture(MergeState &state, const
 		for (int32_t y = 0; y < img->get_height(); y++) {
 			for (int32_t x = 0; x < img->get_width(); x++) {
 				Color orm;
-				if (ao_img.is_valid() && !ao_img->empty()) {
-					ao_img->lock();
-					if (material->get_ao_texture_channel() == SpatialMaterial::TEXTURE_CHANNEL_RED) {
+				if (ao_img.is_valid() && !ao_img->is_empty()) {
+					if (material->get_ao_texture_channel() == StandardMaterial3D::TEXTURE_CHANNEL_RED) {
 						orm.r = ao_img->get_pixel(x, y).r;
-					} else if (material->get_ao_texture_channel() == SpatialMaterial::TEXTURE_CHANNEL_GREEN) {
+					} else if (material->get_ao_texture_channel() == StandardMaterial3D::TEXTURE_CHANNEL_GREEN) {
 						orm.r = ao_img->get_pixel(x, y).g;
-					} else if (material->get_ao_texture_channel() == SpatialMaterial::TEXTURE_CHANNEL_BLUE) {
+					} else if (material->get_ao_texture_channel() == StandardMaterial3D::TEXTURE_CHANNEL_BLUE) {
 						orm.r = ao_img->get_pixel(x, y).b;
-					} else if (material->get_ao_texture_channel() == SpatialMaterial::TEXTURE_CHANNEL_ALPHA) {
+					} else if (material->get_ao_texture_channel() == StandardMaterial3D::TEXTURE_CHANNEL_ALPHA) {
 						orm.r = ao_img->get_pixel(x, y).a;
-					} else if (material->get_ao_texture_channel() == SpatialMaterial::TEXTURE_CHANNEL_GRAYSCALE) {
+					} else if (material->get_ao_texture_channel() == StandardMaterial3D::TEXTURE_CHANNEL_GRAYSCALE) {
 						orm.r = ao_img->get_pixel(x, y).r;
 					}
-					ao_img->unlock();
 				}
 				float channel_mul = 0.0f;
-				if (roughness_img.is_valid() && !roughness_img->empty()) {
-					roughness_img->lock();
-					if (material->get_roughness_texture_channel() == SpatialMaterial::TEXTURE_CHANNEL_RED) {
+				if (roughness_img.is_valid() && !roughness_img->is_empty()) {
+					if (material->get_roughness_texture_channel() == StandardMaterial3D::TEXTURE_CHANNEL_RED) {
 						orm.g = roughness_img->get_pixel(x, y).r;
-					} else if (material->get_roughness_texture_channel() == SpatialMaterial::TEXTURE_CHANNEL_GREEN) {
+					} else if (material->get_roughness_texture_channel() == StandardMaterial3D::TEXTURE_CHANNEL_GREEN) {
 						orm.g = roughness_img->get_pixel(x, y).g;
-					} else if (material->get_roughness_texture_channel() == SpatialMaterial::TEXTURE_CHANNEL_BLUE) {
+					} else if (material->get_roughness_texture_channel() == StandardMaterial3D::TEXTURE_CHANNEL_BLUE) {
 						orm.g = roughness_img->get_pixel(x, y).b;
-					} else if (material->get_roughness_texture_channel() == SpatialMaterial::TEXTURE_CHANNEL_ALPHA) {
+					} else if (material->get_roughness_texture_channel() == StandardMaterial3D::TEXTURE_CHANNEL_ALPHA) {
 						orm.g = roughness_img->get_pixel(x, y).a;
-					} else if (material->get_roughness_texture_channel() == SpatialMaterial::TEXTURE_CHANNEL_GRAYSCALE) {
+					} else if (material->get_roughness_texture_channel() == StandardMaterial3D::TEXTURE_CHANNEL_GRAYSCALE) {
 						orm.g = roughness_img->get_pixel(x, y).r;
 					}
-					roughness_img->unlock();
 				}
 				if (roughness_img.is_valid()) {
 					channel_mul = material->get_roughness();
@@ -681,20 +672,18 @@ Ref<Image> MeshMergeMaterialRepack::_get_source_texture(MergeState &state, const
 				} else {
 					orm.g = material->get_roughness();
 				}
-				if (metallic_img.is_valid() && !metallic_img->empty()) {
-					metallic_img->lock();
-					if (material->get_metallic_texture_channel() == SpatialMaterial::TEXTURE_CHANNEL_RED) {
+				if (metallic_img.is_valid() && !metallic_img->is_empty()) {
+					if (material->get_metallic_texture_channel() == StandardMaterial3D::TEXTURE_CHANNEL_RED) {
 						orm.b = metallic_img->get_pixel(x, y).r;
-					} else if (material->get_metallic_texture_channel() == SpatialMaterial::TEXTURE_CHANNEL_GREEN) {
+					} else if (material->get_metallic_texture_channel() == StandardMaterial3D::TEXTURE_CHANNEL_GREEN) {
 						orm.b = metallic_img->get_pixel(x, y).g;
-					} else if (material->get_metallic_texture_channel() == SpatialMaterial::TEXTURE_CHANNEL_BLUE) {
+					} else if (material->get_metallic_texture_channel() == StandardMaterial3D::TEXTURE_CHANNEL_BLUE) {
 						orm.b = metallic_img->get_pixel(x, y).b;
-					} else if (material->get_metallic_texture_channel() == SpatialMaterial::TEXTURE_CHANNEL_ALPHA) {
+					} else if (material->get_metallic_texture_channel() == StandardMaterial3D::TEXTURE_CHANNEL_ALPHA) {
 						orm.b = metallic_img->get_pixel(x, y).a;
-					} else if (material->get_metallic_texture_channel() == SpatialMaterial::TEXTURE_CHANNEL_GRAYSCALE) {
+					} else if (material->get_metallic_texture_channel() == StandardMaterial3D::TEXTURE_CHANNEL_GRAYSCALE) {
 						orm.b = metallic_img->get_pixel(x, y).r;
 					}
-					metallic_img->unlock();
 				}
 				if (metallic_img.is_valid()) {
 					channel_mul = material->get_metallic();
@@ -702,9 +691,7 @@ Ref<Image> MeshMergeMaterialRepack::_get_source_texture(MergeState &state, const
 				} else {
 					orm.b = material->get_metallic();
 				}
-				img->lock();
 				img->set_pixel(x, y, orm);
-				img->unlock();
 			}
 		}
 	} else if (texture_type == "albedo") {
@@ -713,12 +700,10 @@ Ref<Image> MeshMergeMaterialRepack::_get_source_texture(MergeState &state, const
 		if (albedo_img.is_valid()) {
 			color_mul = material->get_albedo();
 			color_add = Color(0, 0, 0, 0);
-			albedo_img->lock();
 		} else {
 			color_mul = Color(0, 0, 0, 0);
 			color_add = material->get_albedo();
 		}
-		img->lock();
 		for (int32_t y = 0; y < img->get_height(); y++) {
 			for (int32_t x = 0; x < img->get_width(); x++) {
 				Color c;
@@ -732,10 +717,6 @@ Ref<Image> MeshMergeMaterialRepack::_get_source_texture(MergeState &state, const
 				img->set_pixel(x, y, c);
 			}
 		}
-		if (albedo_img.is_valid()) {
-			albedo_img->unlock();
-		}
-		img->unlock();
 	} else if (texture_type == "normal") {
 		if (normal_img.is_valid()) {
 			img = normal_img;
@@ -745,15 +726,13 @@ Ref<Image> MeshMergeMaterialRepack::_get_source_texture(MergeState &state, const
 		float emission_energy = material->get_emission_energy();
 		Color color_mul;
 		Color color_add;
-		if (material->get_emission_operator() == SpatialMaterial::EMISSION_OP_ADD) {
+		if (material->get_emission_operator() == StandardMaterial3D::EMISSION_OP_ADD) {
 			color_mul = Color(1, 1, 1) * emission_energy;
 			color_add = emission_col * emission_energy;
 		} else {
 			color_mul = emission_col * emission_energy;
 			color_add = Color(0, 0, 0);
 		}
-		emission_img->lock();
-		img->lock();
 		for (int32_t y = 0; y < img->get_height(); y++) {
 			for (int32_t x = 0; x < img->get_width(); x++) {
 				Color c = emission_img->get_pixel(x, y);
@@ -763,8 +742,6 @@ Ref<Image> MeshMergeMaterialRepack::_get_source_texture(MergeState &state, const
 				img->set_pixel(x, y, c);
 			}
 		}
-		emission_img->unlock();
-		img->unlock();
 	}
 	return img;
 }
@@ -775,7 +752,7 @@ void MeshMergeMaterialRepack::_generate_atlas(const int32_t p_num_meshes, Vector
 	for (int32_t mesh_i = 0; mesh_i < r_meshes.size(); mesh_i++) {
 		for (int32_t j = 0; j < r_meshes[mesh_i].mesh->get_surface_count(); j++) {
 			Array mesh = r_meshes[mesh_i].mesh->surface_get_arrays(j);
-			if (mesh.empty()) {
+			if (mesh.is_empty()) {
 				continue;
 			}
 			Array indices = mesh[ArrayMesh::ARRAY_INDEX];
@@ -830,7 +807,7 @@ void MeshMergeMaterialRepack::scale_uvs_by_texture_dimension(const Vector<MeshSt
 		for (int32_t surface_i = 0; surface_i < mesh_items[mesh_i].mesh->get_surface_count(); surface_i++) {
 			Ref<ArrayMesh> array_mesh = mesh_items[mesh_i].mesh;
 			Array mesh = array_mesh->surface_get_arrays(surface_i);
-			if (mesh.empty()) {
+			if (mesh.is_empty()) {
 				continue;
 			}
 			Array vertices = mesh[ArrayMesh::ARRAY_VERTEX];
@@ -842,7 +819,7 @@ void MeshMergeMaterialRepack::scale_uvs_by_texture_dimension(const Vector<MeshSt
 			Vector<Vector2> uv_arr = mesh[Mesh::ARRAY_TEX_UV];
 			Vector<int32_t> index_arr = mesh[Mesh::ARRAY_INDEX];
 			Vector<Plane> tangent_arr = mesh[Mesh::ARRAY_TANGENT];
-			Transform xform = original_mesh_items[mesh_i].mesh_instance->get_global_transform();
+			Transform3D xform = original_mesh_items[mesh_i].mesh_instance->get_global_transform();
 			Vector<ModelVertex> model_vertices;
 			model_vertices.resize(vertex_arr.size());
 			for (int32_t vertex_i = 0; vertex_i < vertex_arr.size(); vertex_i++) {
@@ -865,7 +842,7 @@ void MeshMergeMaterialRepack::scale_uvs_by_texture_dimension(const Vector<MeshSt
 	for (int32_t mesh_i = 0; mesh_i < mesh_items.size(); mesh_i++) {
 		for (int32_t j = 0; j < mesh_items[mesh_i].mesh->get_surface_count(); j++) {
 			Array mesh = mesh_items[mesh_i].mesh->surface_get_arrays(j);
-			if (mesh.empty()) {
+			if (mesh.is_empty()) {
 				continue;
 			}
 			Vector<Vector3> vertices = mesh[ArrayMesh::ARRAY_VERTEX];
@@ -894,11 +871,11 @@ void MeshMergeMaterialRepack::scale_uvs_by_texture_dimension(const Vector<MeshSt
 					uvs.resize(0);
 					break;
 				}
-				Ref<SpatialMaterial> spatial_material = material;
+				Ref<StandardMaterial3D> spatial_material = material;
 				if (spatial_material.is_null()) {
 					continue;
 				}
-				const Ref<Texture> tex = spatial_material->get_texture(SpatialMaterial::TextureParam::TEXTURE_ALBEDO);
+				const Ref<Texture2D> tex = spatial_material->get_texture(StandardMaterial3D::TextureParam::TEXTURE_ALBEDO);
 				uvs.write[vertex_i] = r_model_vertices[mesh_count][vertex_i].uv;
 				if (tex.is_valid()) {
 					uvs.write[vertex_i].x *= (float)MAX(texture_minimum_side, tex->get_width());
@@ -918,7 +895,6 @@ Ref<Image> MeshMergeMaterialRepack::dilate(Ref<Image> source_image) {
 	int32_t width = target_image->get_size().x;
 	const int32_t bytes_in_pixel = 4;
 	pixels.resize(height * width * bytes_in_pixel);
-	target_image->lock();
 	for (int32_t y = 0; y < height; y++) {
 		for (int32_t x = 0; x < width; x++) {
 			int32_t pixel_index = x + (width * y);
@@ -930,9 +906,7 @@ Ref<Image> MeshMergeMaterialRepack::dilate(Ref<Image> source_image) {
 			pixels.write[index + 3] = uint8_t(pixel.a * 255.0);
 		}
 	}
-	target_image->unlock();
 	rjm_texbleed(pixels.ptrw(), width, height, 3, bytes_in_pixel, bytes_in_pixel * width);
-	target_image->lock();
 	for (int32_t y = 0; y < height; y++) {
 		for (int32_t x = 0; x < width; x++) {
 			Color pixel;
@@ -945,7 +919,6 @@ Ref<Image> MeshMergeMaterialRepack::dilate(Ref<Image> source_image) {
 			target_image->set_pixel(x, y, pixel);
 		}
 	}
-	target_image->unlock();
 	target_image->generate_mipmaps();
 	return target_image;
 }
@@ -957,7 +930,7 @@ void MeshMergeMaterialRepack::map_mesh_to_index_to_material(const Vector<MeshSta
 			Array mesh = array_mesh->surface_get_arrays(j);
 			Array uvs = mesh[ArrayMesh::ARRAY_TEX_UV];
 			if (!uvs.size()) {
-				array_mesh->mesh_unwrap(Transform(), 2.0f);
+				array_mesh->mesh_unwrap(Transform3D(), 2.0f);
 				break;
 			}
 		}
@@ -965,8 +938,8 @@ void MeshMergeMaterialRepack::map_mesh_to_index_to_material(const Vector<MeshSta
 			Array mesh = array_mesh->surface_get_arrays(j);
 			Vector<Vector3> indices = mesh[ArrayMesh::ARRAY_INDEX];
 			Ref<Material> mat = mesh_items[mesh_i].mesh->surface_get_material(j);
-			if (mesh_items[mesh_i].mesh_instance->get_surface_material(j).is_valid()) {
-				mat = mesh_items[mesh_i].mesh_instance->get_surface_material(j);
+			if (mesh_items[mesh_i].mesh_instance->get_active_material(j).is_valid()) {
+				mat = mesh_items[mesh_i].mesh_instance->get_active_material(j);
 			}
 			if (material_cache.find(mat) == -1) {
 				material_cache.push_back(mat);
@@ -988,27 +961,27 @@ Node *MeshMergeMaterialRepack::_output(MergeState &state, int p_count) {
 	MeshMergeMaterialRepack::TextureData texture_data;
 	for (int32_t mesh_i = 0; mesh_i < state.r_mesh_items.size(); mesh_i++) {
 		if (state.r_mesh_items[mesh_i].mesh_instance->get_parent()) {
-			Spatial *spatial = memnew(Spatial);
-			Transform xform = state.r_mesh_items[mesh_i].mesh_instance->get_transform();
+			Node3D *spatial = memnew(Node3D);
+			Transform3D xform = state.r_mesh_items[mesh_i].mesh_instance->get_transform();
 			spatial->set_transform(xform);
 			spatial->set_name(state.r_mesh_items[mesh_i].mesh_instance->get_name());
 			state.r_mesh_items[mesh_i].mesh_instance->replace_by(spatial);
 		}
 	}
 	Ref<SurfaceTool> st_all;
-	st_all.instance();
+	st_all.instantiate();
 	st_all->begin(Mesh::PRIMITIVE_TRIANGLES);
 	for (uint32_t mesh_i = 0; mesh_i < state.atlas->meshCount; mesh_i++) {
 		Ref<SurfaceTool> st;
-		st.instance();
+		st.instantiate();
 		st->begin(Mesh::PRIMITIVE_TRIANGLES);
 		const xatlas::Mesh &mesh = state.atlas->meshes[mesh_i];
 		for (uint32_t v = 0; v < mesh.vertexCount; v++) {
 			const xatlas::Vertex vertex = mesh.vertexArray[v];
 			const ModelVertex &sourceVertex = state.model_vertices[mesh_i][vertex.xref];
-			st->add_uv(Vector2(vertex.uv[0] / state.atlas->width, vertex.uv[1] / state.atlas->height));
-			st->add_normal(sourceVertex.normal);
-			st->add_color(Color(1.0f, 1.0f, 1.0f));
+			st->set_uv(Vector2(vertex.uv[0] / state.atlas->width, vertex.uv[1] / state.atlas->height));
+			st->set_normal(sourceVertex.normal);
+			st->set_color(Color(1.0f, 1.0f, 1.0f));
 			st->add_vertex(sourceVertex.pos);
 		}
 		for (uint32_t f = 0; f < mesh.indexCount; f++) {
@@ -1017,99 +990,99 @@ Node *MeshMergeMaterialRepack::_output(MergeState &state, int p_count) {
 		}
 		st->generate_tangents();
 		Ref<ArrayMesh> array_mesh = st->commit();
-		st_all->append_from(array_mesh, 0, Transform());
+		st_all->append_from(array_mesh, 0, Transform3D());
 	}
-	Ref<SpatialMaterial> mat;
-	mat.instance();
+	Ref<StandardMaterial3D> mat;
+	mat.instantiate();
 	mat->set_name("Atlas");
 	Map<String, Ref<Image> >::Element *A = state.texture_atlas.find("albedo");
 	Image::CompressMode compress_mode = Image::COMPRESS_ETC;
 	if (Image::_image_compress_bc_func) {
 		compress_mode = Image::COMPRESS_S3TC;
 	}
-	if (A && !A->get()->empty()) {
+	if (A && !A->get()->is_empty()) {
 		Ref<Image> img = dilate(A->get());
 		img->compress(compress_mode, Image::COMPRESS_SOURCE_SRGB);
 		String path = state.output_path;
 		String base_dir = path.get_base_dir();
 		path = base_dir.plus_file(path.get_basename().get_file() + "_albedo");
-		Ref<_Directory> directory;
-		directory.instance();
+		Ref<core_bind::Directory> directory;
+		directory.instantiate();
 		path += "_" + itos(p_count) + ".res";
 		Ref<ImageTexture> tex;
-		tex.instance();
+		tex.instantiate();
 		tex->create_from_image(img);
 		ResourceSaver::save(path, tex);
-		RES res = ResourceLoader::load(path, "Texture", true);
-		mat->set_texture(SpatialMaterial::TEXTURE_ALBEDO, res);
+		RES res = ResourceLoader::load(path, "Texture");
+		mat->set_texture(StandardMaterial3D::TEXTURE_ALBEDO, res);
 	}
 	Map<String, Ref<Image> >::Element *E = state.texture_atlas.find("emission");
-	if (E && !E->get()->empty()) {
+	if (E && !E->get()->is_empty()) {
 		Ref<Image> img = dilate(E->get());
 		img->compress(compress_mode);
 		String path = state.output_path;
 		String base_dir = path.get_base_dir();
 		path = base_dir.plus_file(path.get_basename().get_file() + "_emission");
-		Ref<_Directory> directory;
-		directory.instance();
+		Ref<core_bind::Directory> directory;
+		directory.instantiate();
 		path += "_" + itos(p_count) + ".res";
 		Ref<ImageTexture> tex;
-		tex.instance();
+		tex.instantiate();
 		tex->create_from_image(img);
 		ResourceSaver::save(path, tex);
-		RES res = ResourceLoader::load(path, "Texture", true);
-		mat->set_feature(SpatialMaterial::FEATURE_EMISSION, true);
-		mat->set_texture(SpatialMaterial::TEXTURE_EMISSION, res);
+		RES res = ResourceLoader::load(path, "Texture");
+		mat->set_feature(StandardMaterial3D::FEATURE_EMISSION, true);
+		mat->set_texture(StandardMaterial3D::TEXTURE_EMISSION, res);
 	}
 	Map<String, Ref<Image> >::Element *N = state.texture_atlas.find("normal");
-	if (N && !N->get()->empty()) {
+	if (N && !N->get()->is_empty()) {
 		Ref<Image> img = dilate(N->get());
 		img->compress(compress_mode, Image::COMPRESS_SOURCE_NORMAL);
 		String path = state.output_path;
 		String base_dir = path.get_base_dir();
 		path = base_dir.plus_file(path.get_basename().get_file() + "_normal");
-		Ref<_Directory> directory;
-		directory.instance();
+		Ref<core_bind::Directory> directory;
+		directory.instantiate();
 		path += "_" + itos(p_count) + ".res";
 		Ref<ImageTexture> tex;
-		tex.instance();
+		tex.instantiate();
 		tex->create_from_image(img);
 		ResourceSaver::save(path, tex);
-		RES res = ResourceLoader::load(path, "Texture", true);
-		mat->set_feature(SpatialMaterial::FEATURE_NORMAL_MAPPING, true);
-		mat->set_texture(SpatialMaterial::TEXTURE_NORMAL, res);
+		RES res = ResourceLoader::load(path, "Texture");
+		mat->set_feature(StandardMaterial3D::FEATURE_NORMAL_MAPPING);
+		mat->set_texture(StandardMaterial3D::TEXTURE_NORMAL, res);
 	}
 	Map<String, Ref<Image> >::Element *ORM = state.texture_atlas.find("orm");
-	if (ORM && !ORM->get()->empty()) {
+	if (ORM && !ORM->get()->is_empty()) {
 		Ref<Image> img = dilate(ORM->get());
 		img->compress(compress_mode);
 		String path = state.output_path;
 		String base_dir = path.get_base_dir();
 		path = base_dir.plus_file(path.get_basename().get_file() + "_orm");
-		Ref<_Directory> directory;
-		directory.instance();
+		Ref<core_bind::Directory> directory;
+		directory.instantiate();
 		path += "_" + itos(p_count) + ".res";
 		Ref<ImageTexture> tex;
-		tex.instance();
+		tex.instantiate();
 		tex->create_from_image(img);
 		ResourceSaver::save(path, tex);
-		RES res = ResourceLoader::load(path, "Texture", true);
-		mat->set_cull_mode(SpatialMaterial::CULL_DISABLED);
-		mat->set_ao_texture_channel(SpatialMaterial::TEXTURE_CHANNEL_RED);
-		mat->set_feature(SpatialMaterial::FEATURE_AMBIENT_OCCLUSION, true);
-		mat->set_texture(SpatialMaterial::TEXTURE_AMBIENT_OCCLUSION, tex);
-		mat->set_roughness_texture_channel(SpatialMaterial::TEXTURE_CHANNEL_GREEN);
-		mat->set_texture(SpatialMaterial::TEXTURE_ROUGHNESS, tex);
-		mat->set_metallic_texture_channel(SpatialMaterial::TEXTURE_CHANNEL_BLUE);
+		RES res = ResourceLoader::load(path, "Texture");
+		mat->set_cull_mode(StandardMaterial3D::CULL_DISABLED);
+		mat->set_ao_texture_channel(StandardMaterial3D::TEXTURE_CHANNEL_RED);
+		mat->set_feature(StandardMaterial3D::FEATURE_AMBIENT_OCCLUSION, true);
+		mat->set_texture(StandardMaterial3D::TEXTURE_AMBIENT_OCCLUSION, tex);
+		mat->set_roughness_texture_channel(StandardMaterial3D::TEXTURE_CHANNEL_GREEN);
+		mat->set_texture(StandardMaterial3D::TEXTURE_ROUGHNESS, tex);
+		mat->set_metallic_texture_channel(StandardMaterial3D::TEXTURE_CHANNEL_BLUE);
 		mat->set_metallic(1.0);
-		mat->set_texture(SpatialMaterial::TEXTURE_METALLIC, res);
+		mat->set_texture(StandardMaterial3D::TEXTURE_METALLIC, res);
 	}
-	MeshInstance *mi = memnew(MeshInstance);
+	MeshInstance3D *mi = memnew(MeshInstance3D);
 	Ref<ArrayMesh> array_mesh = st_all->commit();
 	mi->set_mesh(array_mesh);
 	mi->set_name(state.p_name);
-	Transform root_xform;
-	Spatial *spatial = Object::cast_to<Spatial>(state.p_root);
+	Transform3D root_xform;
+	Node3D *spatial = Object::cast_to<Node3D>(state.p_root);
 	if (spatial) {
 		root_xform = spatial->get_transform();
 	}
@@ -1122,8 +1095,7 @@ Node *MeshMergeMaterialRepack::_output(MergeState &state, int p_count) {
 	return state.p_root;
 }
 
-#ifdef TOOLS_ENABLED
-void SceneMergePlugin::merge(Variant p_user_data) {
+void SceneMergePlugin::merge() {
 	file_export_lib_merge->set_pressed(false);
 	List<String> extensions;
 	extensions.push_back("tscn");
@@ -1135,7 +1107,7 @@ void SceneMergePlugin::merge(Variant p_user_data) {
 	file_export_lib->popup_centered_ratio();
 	Node *root = editor->get_tree()->get_edited_scene_root();
 	String filename = String(root->get_filename().get_file().get_basename());
-	if (filename.empty()) {
+	if (filename.is_empty()) {
 		filename = root->get_name();
 	}
 	file_export_lib->set_current_file(filename + String(".scn"));
@@ -1153,7 +1125,7 @@ void SceneMergePlugin::_dialog_action(String p_file) {
 			editor->show_accept(TTR("Can't load scene for merging!"), TTR("OK"));
 			return;
 		} else {
-			node->add_child(scene->instance());
+			node->add_child(scene->instantiate());
 		}
 	}
 	scene_optimize->merge(p_file, node);
@@ -1166,7 +1138,7 @@ void SceneMergePlugin::_bind_methods() {
 
 void SceneMergePlugin::_notification(int notification) {
 	if (notification == NOTIFICATION_ENTER_TREE) {
-		editor->add_tool_menu_item("Merge Scene", this, "merge");
+		editor->add_tool_menu_item("Merge Scene", callable_mp(this, &SceneMergePlugin::merge));
 	} else if (notification == NOTIFICATION_EXIT_TREE) {
 		editor->remove_tool_menu_item("Merge Scene");
 	}
@@ -1175,14 +1147,13 @@ void SceneMergePlugin::_notification(int notification) {
 SceneMergePlugin::SceneMergePlugin(EditorNode *p_node) {
 	editor = p_node;
 	file_export_lib->set_title(TTR("Export Library"));
-	file_export_lib->set_mode(EditorFileDialog::MODE_SAVE_FILE);
-	file_export_lib->connect("file_selected", this, "_dialog_action");
+	file_export_lib->set_file_mode(EditorFileDialog::FILE_MODE_SAVE_FILE);
+	file_export_lib->connect("file_selected", callable_mp(this, &SceneMergePlugin::_dialog_action));
 	file_export_lib_merge->set_text(TTR("Merge With Existing"));
 	file_export_lib->get_vbox()->add_child(file_export_lib_merge);
 	editor->get_gui_base()->add_child(file_export_lib);
 	file_export_lib->set_title(TTR("Merge Scene"));
 }
-#endif
 
 bool MeshMergeMaterialRepack::MeshState::operator==(const MeshState &rhs) const {
 	if (rhs.mesh == mesh && rhs.path == path && rhs.mesh_instance == mesh_instance) {
